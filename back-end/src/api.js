@@ -4,7 +4,7 @@ import config from './config.json';
 
 class Api {
   getRooms() {
-    return axios.get(`${config.server_url}/rooms`);
+    return axios.get(`${config.server_url}`);
   }
 
   login(payload) {

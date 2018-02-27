@@ -2,7 +2,6 @@ const Room = require('../db/roomModel');
 
 exports.enterRoom = function(req, res) {
  const data = req.body;
- console.log('data', data);
  Room.findOne({
    _id: data.roomId
  }, (err, room) => {
@@ -14,13 +13,23 @@ exports.enterRoom = function(req, res) {
     if (users.findIndex(user => user.email === data.email) === -1) {
       const roomId = data.roomId;
      data.roomId = null;
-      users.push(data);
+      users.push({
+        ...data, 
+        ready: false,
+        finished: false,
+        answers: []
+      });
       Room.update({
         _id: roomId
       }, {
         users
       }, err => {
         if (err) return res.status(500).json({ message: 'Enter room failed'})
+        res.io.emit(`${roomId}:updated`, {
+          started: room.started,
+          finished: room.finished,
+          users
+        });
         return res.json(users);
       })
     } else {
@@ -45,9 +54,16 @@ exports.leaveRoom = function(req, res) {
      Room.update({
       _id: roomId
     }, {
-      users: removedUsers
+      users: removedUsers,
+      started: false,
+      finished: false,
     }, err => {
       if (err) return res.status(500).json({ message: 'Leave room failed'})
+      res.io.emit(`${roomId}:updated`, {
+        started: false,
+        finished: false,
+        users: removedUsers
+      });
       return res.json(removedUsers);
     })
     }
@@ -75,7 +91,6 @@ exports.leaveRoom = function(req, res) {
       })
       if (updatedUsers.every(user => user.ready === true)) {
         started = true;
-        res.io.emit(`${roomId}:started`);
       }
       Room.update({
         _id: roomId
@@ -84,6 +99,11 @@ exports.leaveRoom = function(req, res) {
         started
       }, err => {
         if (err) return res.status(500).json({ message: 'Enter room failed'})
+        res.io.emit(`${roomId}:updated`, {
+          started,
+          finished: room.finished,
+          users: updatedUsers
+        });
         return res.json(updatedUsers);
       })
     }
@@ -137,11 +157,15 @@ exports.leaveRoom = function(req, res) {
           const info = usersWithScore.map(user => ({
             email: user.email,
             score: user.score
-          }))
-          res.io.emit(`${roomId}:finished`, info);
+          }));
         }
-        if (err) return res.status(500).json({ message: 'Enter room failed'})
-        return res.json(updatedUsers);
+        res.io.emit(`${roomId}:updated`, {
+          started: room.started,
+          finished,
+          users: usersWithScore ? usersWithScore : updatedUsers,
+        });
+        if (err) return res.status(500).json({ message: 'Something wrong, try to finish again'})
+        return res.json({users: usersWithScore ? usersWithScore : updatedUsers});
       })
     }
   })

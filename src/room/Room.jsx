@@ -20,11 +20,15 @@ import {
   start,
   finish,
 } from './actionCreators';
+import config from '../config';
+
+const socket = io(config.server_url);
 
 class Room extends Component {
   state = {
     started: false,
-    finished: false
+    finished: false,
+    users: [],
   };
 
   handleChange = (event, value, questionNo) => {
@@ -43,9 +47,6 @@ class Room extends Component {
 
   finish = () => {
     const { room, finish, user } = this.props;
-    this.setState({
-      finished: true
-    })
     finish({
       roomId: room._id,
       email: user.email,
@@ -54,26 +55,22 @@ class Room extends Component {
 
   componentDidMount() {
     const { room, user } = this.props;
-    const socket = io('http://localhost:3001');
     if (!room) {
       this.props.getRooms();
     }
     if (room) {
-      socket.on(`${room._id}:started`, () => {
+      socket.on(`${room._id}:updated`, ({ started, finished, users }) => {
+        console.log('start the game', started, finished, users);
         this.setState({
-          started: true
-        })
-      });
-      socket.on(`${room._id}:finished`, function (data) {
-        console.log(data)
+          started,
+          finished,
+          users
+        });
       });
       this.props.enterRoom({
         roomId: room._id,
         name: user.name,
-        email: user.email,
-        ready: false,
-        finished: false,
-        answers: [],
+        email: user.email
       });
     }
   }
@@ -89,6 +86,7 @@ class Room extends Component {
   componentWillUnmount() {
     const { room, user, leaveRoom } = this.props;
     if (room) {
+      socket.off(`${room._id}:updated`);
       leaveRoom({
         roomId: room._id,
         email: user.email,
@@ -98,47 +96,57 @@ class Room extends Component {
 
   render() {
     const { room } = this.props;
-    if (room) {
-      if (this.state.started) {
-        return <div>
+    return (
+      <div>
+        {room &&
+          this.state.started && (
+            <div>
               <button onClick={this.finish}>Finish</button>
-              {
-                this.state.finished ? 
-                  ''
-                :
+              {this.state.finished ? (
+                ''
+              ) : (
                 <FormControl component="fieldset">
-                {room.questions.map(question => {
-                  return (
-                    <div key={question.no}>
-                      <FormLabel component="legend">
-                        Question: {question.question}
-                      </FormLabel>
-                      <RadioGroup
-                        value={this.state[question.no]}
-                        onChange={(event, value) =>
-                          this.handleChange(event, value, question.no)
-                        }
-                      >
-                        {question.answerOptions.map(aQ => (
-                          <FormControlLabel
-                            value={aQ.optionId}
-                            key={aQ.optionId}
-                            control={<Radio />}
-                            label={`${aQ.optionName}: ${aQ.optionValue}`}
-                          />
-                        ))}
-                      </RadioGroup>
-                    </div>
-                  );
-                })}
-              </FormControl>
-              }
+                  {room.questions.map(question => {
+                    return (
+                      <div key={question.no}>
+                        <FormLabel component="legend">
+                          Question: {question.question}
+                        </FormLabel>
+                        <RadioGroup
+                          value={this.state[question.no]}
+                          onChange={(event, value) =>
+                            this.handleChange(event, value, question.no)
+                          }
+                        >
+                          {question.answerOptions.map(aQ => (
+                            <FormControlLabel
+                              value={aQ.optionId}
+                              key={aQ.optionId}
+                              control={<Radio />}
+                              label={`${aQ.optionName}: ${aQ.optionValue}`}
+                            />
+                          ))}
+                        </RadioGroup>
+                      </div>
+                    );
+                  })}
+                </FormControl>
+              )}
             </div>
-      } else {
-        return <button onClick={this.start}>Start</button>
-      }
-    }
-    return <p>...Loading</p>;
+          )}
+        {room &&
+          !this.state.started && <button onClick={this.start}>Start</button>}
+        Users:
+        {this.state.users.map(user => (
+          <div>
+            <p>Name: {user.name}</p>
+            <p>Ready: {user.ready ? 'Yes' : 'No'}</p>
+            <p>Finished: {user.finished ? 'Yes' : 'No'}</p>
+          </div>
+        ))}
+        {!room && <p>...Loading</p>}
+      </div>
+    );
   }
 }
 
